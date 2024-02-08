@@ -1,13 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./LiveRecorder.css";
-import {
-  Container,
-  VideoContainer,
-  VideoPlayer,
-  ControlPanel,
-  Button,
-} from "./styles";
-// helpers
+
 import { saveChunkToDB, getDB } from "../../utils/DB";
 
 function LiveRecorder() {
@@ -16,7 +9,22 @@ function LiveRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [recordingStatus, setRecordingStatus] = useState("Not Started");
+  const [showPermissionScreen, setShowPermissionScreen] = useState(false);
   const videoRef = useRef(null);
+
+  useEffect(() => {
+    let intervalId;
+    if (isRecording && !isPaused) {
+      intervalId = setInterval(() => {
+        setVideoDuration((prevDuration) => prevDuration + 1);
+      }, 1000);
+    } else {
+      clearInterval(intervalId);
+    }
+    return () => clearInterval(intervalId);
+  }, [isRecording, isPaused]);
 
   const handleStart = async () => {
     try {
@@ -37,13 +45,16 @@ function LiveRecorder() {
       rec.onstop = () => {
         setIsRecording(false);
         setIsDownloaded(true);
+        setRecordingStatus("Not Started");
       };
 
       setRecorder(rec);
       setIsRecording(true);
+      setRecordingStatus("Recording");
       rec.start();
     } catch (err) {
       console.error("Error accessing media devices: ", err);
+      setShowPermissionScreen(true);
     }
   };
 
@@ -51,10 +62,12 @@ function LiveRecorder() {
     if (isRecording && !isPaused) {
       recorder.pause();
       setIsPaused(true);
+      setRecordingStatus("Paused");
       videoRef.current.pause();
     } else if (isRecording && isPaused) {
       recorder.resume();
       setIsPaused(false);
+      setRecordingStatus("Recording");
       videoRef.current.play();
     }
   };
@@ -95,35 +108,54 @@ function LiveRecorder() {
         const deleteObjectStore = deleteTransaction.objectStore("chunks");
         deleteObjectStore.clear();
         setIsDownloaded(false);
+        setRecordingStatus("Not Started");
       }
     };
   };
 
   return (
     <div className="live-recorder-container">
-      <div className="video-container">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="video-player"
-        />
-      </div>
-      <div className="control-buttons">
-        {!isRecording && !isDownloaded && (
-          <button onClick={handleStart}>Start</button>
-        )}
-        {isRecording && (
-          <>
-            <button onClick={handlePause}>
-              {isPaused ? "Resume" : "Pause"}
+      {showPermissionScreen ? (
+        <div className="permission-screen">
+          <p>Recording Permission Required</p>
+          <p>
+            Please provide the required permissions and{" "}
+            <button onClick={() => setShowPermissionScreen(false)}>
+              Try Again
             </button>
-            <button onClick={handleStop}>Stop</button>
-          </>
-        )}
-        {isDownloaded && <button onClick={downloadVideo}>Download</button>}
-      </div>
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="video-status">
+            <p>Recording Status: {recordingStatus}</p>
+            <p>Recording Duration: {videoDuration} seconds</p>
+          </div>
+          <div className="video-container">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="video-player"
+            />
+          </div>
+          <div className="control-buttons">
+            {!isRecording && !isDownloaded && (
+              <button onClick={handleStart}>Start</button>
+            )}
+            {isRecording && (
+              <>
+                <button onClick={handlePause}>
+                  {isPaused ? "Resume" : "Pause"}
+                </button>
+                <button onClick={handleStop}>Stop</button>
+              </>
+            )}
+            {isDownloaded && <button onClick={downloadVideo}>Download</button>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
